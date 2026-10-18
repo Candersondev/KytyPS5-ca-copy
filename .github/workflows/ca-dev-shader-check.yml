@@ -63,10 +63,13 @@ jobs:
               signed = extracted
               if count and ((extracted >> (count - 1)) & 1):
                   signed |= mask ^ ((1 << count) - 1)
-              assert (signed & mask) == (signed & mask)
+              expected = (src >> offset) & ((1 << count) - 1) if count else 0
+              if count and (expected & (1 << (count - 1))):
+                  expected -= 1 << count
+              assert (signed & mask) == (expected & mask)
               bfm_count = rng.getrandbits(32) & 63
               bfm_offset = rng.getrandbits(32) & 63
               result = (((1 << bfm_count) - 1) << bfm_offset) & mask
-              assert 0 <= result <= mask
+              assert result == (sum(1 << bit for bit in range(bfm_offset, min(64, bfm_offset + bfm_count))) & mask)
           print("PASS: 50,000 arithmetic reference cases (not a compiled emulator test)")
           PY
