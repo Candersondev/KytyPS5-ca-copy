@@ -205,7 +205,7 @@ private:
 	IR::U64 RightMask64(IR::U32 count);
 	void    S_BFM_B64(const Decoder::Instruction& inst);
 	void    S_BFE_U32(const Decoder::Instruction& inst, bool sign);
-	void    S_BFE_U64(const Decoder::Instruction& inst);
+	void    S_BFE_U64(const Decoder::Instruction& inst, bool sign);
 	void    V_BFE_U32(const Decoder::Instruction& inst, bool sign);
 	void    V_BFI_B32(const Decoder::Instruction& inst);
 	void    S_BITCMP_B32(const Decoder::Instruction& inst, bool expected);
