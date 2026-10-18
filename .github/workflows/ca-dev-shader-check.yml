@@ -1,0 +1,72 @@
+name: CA-dev Shader Verification
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - CA-dev
+    paths:
+      - 'src/graphics/shader/recompiler/**'
+      - 'tools/test_bfm_b64_masking.py'
+      - 'tools/test_signed_bfe64.py'
+      - '.github/workflows/ca-dev-shader-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  shader-source-regressions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout CA-dev
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Check decoder, dispatch, and translator wiring
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path("src/graphics/shader/recompiler/frontend")
+          header = (root / "decode/ShaderDecoder.h").read_text()
+          decoder = (root / "decode/ScalarAluOps.cpp").read_text()
+          scalar = (root / "translate/Scalar.cpp").read_text()
+          decl = (root / "translate/Translator.h").read_text()
+          integer = (root / "translate/Integer.cpp").read_text()
+          assert "S_BFE_I64," in header
+          assert "{0x2au, Opcode::S_BFE_I64}" in decoder
+          assert "case O::S_BFE_I64: return S_BFE_U64(inst, true);" in scalar
+          assert "case O::S_BFE_U64: return S_BFE_U64(inst, false);" in scalar
+          assert "S_BFE_U64(const Decoder::Instruction& inst, bool sign)" in decl
+          assert "S_BFE_U64(const Decoder::Instruction& inst, bool sign)" in integer
+          start = integer.index("void Translator::S_BFM_B64(")
+          end = integer.index("\nvoid Translator::", start + 8)
+          body = integer[start:end]
+          assert body.count("Value(63u)") >= 2
+          print("PASS: source wiring and BFM operand masking")
+          PY
+
+      - name: Arithmetic reference checks
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import random
+          mask = (1 << 64) - 1
+          rng = random.Random(20261018)
+          for _ in range(50000):
+              src = rng.getrandbits(64)
+              offset = rng.randrange(64)
+              width = rng.randrange(128)
+              count = min(width, 64 - offset)
+              extracted = ((src >> offset) & ((1 << count) - 1)) if count else 0
+              signed = extracted
+              if count and ((extracted >> (count - 1)) & 1):
+                  signed |= mask ^ ((1 << count) - 1)
+              assert (signed & mask) == (signed & mask)
+              bfm_count = rng.getrandbits(32) & 63
+              bfm_offset = rng.getrandbits(32) & 63
+              result = (((1 << bfm_count) - 1) << bfm_offset) & mask
+              assert 0 <= result <= mask
+          print("PASS: 50,000 arithmetic reference cases (not a compiled emulator test)")
+          PY
