@@ -409,8 +409,8 @@ IR::U64 Translator::RightMask64(IR::U32 count) {
 }
 
 void Translator::S_BFM_B64(const Decoder::Instruction& inst) {
-	const auto count  = ReadU32(inst.src0);
-	const auto offset = ReadU32(inst.src1);
+	const auto count  = ir.BitwiseAnd(ReadU32(inst.src0), IR::U32(IR::Value(63u)));
+	const auto offset = ir.BitwiseAnd(ReadU32(inst.src1), IR::U32(IR::Value(63u)));
 	const auto one    = IR::Value(uint64_t {1});
 	const auto limit  = ir.Emit(IR::ValueOpcode::ShiftLeftLogical64, {one, count});
 	const auto mask   = ir.Emit(IR::ValueOpcode::ISub64, {limit, one});
@@ -434,7 +434,7 @@ void Translator::S_BFE_U32(const Decoder::Instruction& inst, bool sign) {
 	ir.SetScc(ir.INotEqual(result, IR::U32(IR::Value(0u))));
 }
 
-void Translator::S_BFE_U64(const Decoder::Instruction& inst) {
+void Translator::S_BFE_U64(const Decoder::Instruction& inst, bool sign) {
 	const auto source = ReadU64(inst.src0);
 	const auto field  = ReadU32(inst.src1);
 	const auto offset =
@@ -444,7 +444,17 @@ void Translator::S_BFE_U64(const Decoder::Instruction& inst) {
 	const auto available = ir.ISub(IR::U32(IR::Value(64u)), offset);
 	const auto count     = IR::U32(ir.Emit(IR::ValueOpcode::UMin32, {raw_count, available}));
 	const auto shifted   = IR::U64(ir.Emit(IR::ValueOpcode::ShiftRightLogical64, {source, offset}));
-	const auto result    = ir.Emit(IR::ValueOpcode::BitwiseAnd64, {shifted, RightMask64(count)});
+	const auto extracted = IR::U64(ir.Emit(IR::ValueOpcode::BitwiseAnd64, {shifted, RightMask64(count)}));
+	IR::U64 result = extracted;
+	if (sign) {
+		// Guard zero-width fields so neither 64-bit shift uses a count of 64.
+		const auto nonzero = ir.INotEqual(count, IR::U32(IR::Value(0u)));
+		const auto safe_count = ir.Select(nonzero, count, IR::U32(IR::Value(1u)));
+		const auto shift = ir.ISub(IR::U32(IR::Value(64u)), safe_count);
+		const auto left = IR::U64(ir.Emit(IR::ValueOpcode::ShiftLeftLogical64, {extracted, shift}));
+		const auto extended = IR::U64(ir.Emit(IR::ValueOpcode::ShiftRightArithmetic64, {left, shift}));
+		result = ir.Select(nonzero, extended, IR::U64(IR::Value(uint64_t {0})));
+	}
 	WriteOperand(DestinationOperand(inst), result);
 	ir.SetScc(IR::U1(ir.Emit(IR::ValueOpcode::INotEqual64, {result, IR::Value(uint64_t {0})})));
 }
