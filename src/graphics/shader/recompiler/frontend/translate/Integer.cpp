@@ -453,7 +453,7 @@ void Translator::S_BFE_U64(const Decoder::Instruction& inst, bool sign) {
 		const auto shift = ir.ISub(IR::U32(IR::Value(64u)), safe_count);
 		const auto left = IR::U64(ir.Emit(IR::ValueOpcode::ShiftLeftLogical64, {extracted, shift}));
 		const auto extended = IR::U64(ir.Emit(IR::ValueOpcode::ShiftRightArithmetic64, {left, shift}));
-		result = ir.Select(nonzero, extended, IR::U64(IR::Value(uint64_t {0})));
+		result = extended; // Zero-width extraction already produces zero.
 	}
 	WriteOperand(DestinationOperand(inst), result);
 	ir.SetScc(IR::U1(ir.Emit(IR::ValueOpcode::INotEqual64, {result, IR::Value(uint64_t {0})})));
